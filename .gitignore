@@ -1,0 +1,37 @@
+# --- General ---
+# Environment variables
+.env
+*.env.*
+!.env.example
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*~
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Build & Dependency Artifacts ---
+# Python virtual environment
+venv/
+env/
+.venv/
+
+# Celery files
+celerybeat-schedule
+*.pid
+
+# Docker
+docker-compose.override.yml
+
+# --- OS-specific ---
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db

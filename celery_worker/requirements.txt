@@ -1,0 +1,9 @@
+celery
+redis
+sqlalchemy
+psycopg2-binary # Still useful for SQLAlchemy
+python-dotenv
+croniter 
+pytz
+requests          #For making HTTP requests
+beautifulsoup4    #For parsing HTML

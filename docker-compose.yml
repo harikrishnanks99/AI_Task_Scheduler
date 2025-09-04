@@ -1,0 +1,100 @@
+
+services:
+  # ----------------------------------------------------
+  # API Service (Receives User Input)
+  # ----------------------------------------------------
+  task_parser_api:
+    build:
+      context: ./task_parser
+      dockerfile: Dockerfile
+    container_name: task_parser_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./task_parser/app:/app/app
+      - ./celery_worker/app:/app/celery_worker_code
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # ----------------------------------------------------
+  # Database Service (Stores Tasks)
+  # ----------------------------------------------------
+  db:
+    image: postgres:17-alpine
+    container_name: postgres_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=finaldb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------
+  # Redis Service (Message Broker for Celery)
+  # ----------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: redis_broker
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------
+  # Celery Worker Service (Executes Tasks)
+  # ----------------------------------------------------
+  worker:
+    build:
+      context: ./celery_worker
+      dockerfile: Dockerfile
+    container_name: celery_worker
+    env_file:
+      - .env
+    volumes:
+      - ./celery_worker/app:/app/celery_worker_code
+      - ./task_parser/app:/task_parser_app
+    command: celery -A celery_worker_code.celery_app worker -l info
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+
+  # ----------------------------------------------------
+  # Celery Beat Service (Schedules Tasks)
+  # ----------------------------------------------------
+  beat:
+    build:
+      context: ./celery_worker
+      dockerfile: Dockerfile
+    container_name: celery_beat
+    env_file:
+      - .env
+    volumes:
+      - ./celery_worker/app:/app/celery_worker_code
+      - ./task_parser/app:/task_parser_app
+    command: celery -A celery_worker_code.celery_app beat -l info
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
