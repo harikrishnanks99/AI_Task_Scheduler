@@ -16,26 +16,42 @@ SMTP_PORT = 587
 
 
 @celery_app.task(name="send_email")
-def send_email(recipient: str = None, subject: str = None, body: str = None, **kwargs):
+def send_email(previous_result: dict = None, recipient: str = None, subject: str = None, body: str = None):
     """
-    Sends an email using Gmail's SMTP server and credentials from environment variables.
-    Accepts body/content/message/text for flexibility.
+    A flexible email task that can be used standalone or as part of a chain.
+    - If `previous_result` is provided, it will be used to format the email body.
+    - If `previous_result` is NOT provided, the direct `body` argument will be used.
     """
-    # Normalize parameters
-    email_body = body or kwargs.get("content") or kwargs.get("message") or kwargs.get("text")
-    if not recipient:
-        raise ValueError("Missing recipient email address.")
-    if not subject:
-        raise ValueError("Missing subject.")
-    if not email_body:
-        raise ValueError("Missing email body (expected 'body', 'content', 'message', or 'text').")
+    email_body = None
 
+    # --- NEW: Logic to handle both chained and standalone calls ---
+    if previous_result and isinstance(previous_result, dict):
+        print("--- [TASK: send_email] Running as part of a chain. Formatting previous result. ---")
+        # This is a chained task. Format the body from the previous result.
+        scraped_data = previous_result.get("scraped_data", [])
+        if not scraped_data:
+            email_body = "The previous scraping task ran but found no data."
+        else:
+            email_body = "Here are the results from the web scrape:\n\n"
+            email_body += "\n".join(f"- {item}" for item in scraped_data)
+    else:
+        print("--- [TASK: send_email] Running as a standalone task. ---")
+        # This is a standalone task. Use the 'body' argument directly.
+        email_body = body
+    # --- END NEW ---
+
+    # --- Validation ---
+    if not recipient:
+        raise ValueError("Email recipient is missing.")
+    if not subject:
+        raise ValueError("Email subject is missing.")
+    if not email_body:
+        raise ValueError("Email body is empty or could not be generated.")
+
+    # --- Email Sending Logic (largely unchanged) ---
     sender_email = os.environ.get("EMAIL_HOST_USER")
     sender_password = os.environ.get("EMAIL_HOST_PASSWORD")
     sender_name = os.environ.get("EMAIL_SENDER_NAME", sender_email)
-
-    print(" -----------pRINTING EMAIL AND PASSWORD---------------",sender_email, sender_password)
-
 
     if not all([sender_email, sender_password]):
         raise ValueError("Email credentials not configured in environment variables.")
@@ -46,6 +62,8 @@ def send_email(recipient: str = None, subject: str = None, body: str = None, **k
     msg["Subject"] = subject
     msg.set_content(email_body)
 
+    print(f"--- [TASK: send_email] Attempting to send email to '{recipient}' ---")
+
     try:
         context = ssl.create_default_context()
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
@@ -53,12 +71,14 @@ def send_email(recipient: str = None, subject: str = None, body: str = None, **k
             server.login(sender_email, sender_password)
             server.send_message(msg)
 
-        print(f"✅ Email sent to {recipient}")
-        return f"Successfully sent email to {recipient}"
+        success_message = f"Successfully sent email to {recipient}"
+        print(f"--- [TASK: send_email] {success_message} ---")
+        return success_message
 
     except Exception as e:
-        print(f"❌ Email failed: {e}")
-        raise
+        error_message = f"Failed to send email: {e}"
+        print(f"!!! [TASK: send_email] {error_message} !!!")
+        raise e
 
 
 

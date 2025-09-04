@@ -7,13 +7,19 @@ Base = declarative_base()
 
 class Task(Base):
     __tablename__ = "tasks"
+
     id = Column(Integer, primary_key=True, index=True)
     task_name = Column(String, index=True)
-    tool_to_use = Column(String)
-    parameters = Column(JSON)
+    
+    # --- KEY CHANGE ---
+    # We have replaced 'tool_to_use' and 'parameters' with a single 'workflow' column.
+    # This column will store the list of steps for the task.
+    workflow = Column(JSON)
+    # --- END KEY CHANGE ---
+    
     schedule_details = Column(JSON)
     timezone = Column(String)
     is_active = Column(Boolean, default=True)
-    last_run_at = Column(DateTime(timezone=True), nullable=True) # NEW
+    last_run_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
