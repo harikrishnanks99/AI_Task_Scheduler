@@ -95,6 +95,15 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend_ui
+    ports:
+      - "3000:80" # Expose the Nginx server on port 3000
+    depends_on:
+      - task_parser_api # Wait for the API to be ready
 
 volumes:
   postgres_data:

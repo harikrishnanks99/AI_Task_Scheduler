@@ -98,11 +98,9 @@ app = FastAPI(
 try:
     genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
-    # --- THE MODERN, NON-DEPRECATED METHOD ---
-    # With an updated google-generativeai library (>=0.5.0), this is the
-    # correct and officially recommended way to define tools.
+ 
     gemini_model = genai.GenerativeModel(
-        "gemini-1.5-flash",
+        "gemini-2.0-flash",
         system_instruction="You are a helpful assistant that helps users schedule tasks by using the provided `ScheduleTaskTool` tool. You can handle single or multi-step tasks (workflows).",
         tools=[schemas.ScheduleTaskTool] # Pass the Pydantic class directly
     )
