@@ -10,13 +10,7 @@ class Task(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     task_name = Column(String, index=True)
-    
-    # --- KEY CHANGE ---
-    # We have replaced 'tool_to_use' and 'parameters' with a single 'workflow' column.
-    # This column will store the list of steps for the task.
-    workflow = Column(JSON)
-    # --- END KEY CHANGE ---
-    
+    workflow = Column(JSON)  # Stores the list of steps for the task
     schedule_details = Column(JSON)
     timezone = Column(String)
     is_active = Column(Boolean, default=True)
