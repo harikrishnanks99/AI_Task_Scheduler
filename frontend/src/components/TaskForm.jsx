@@ -15,10 +15,10 @@ function TaskForm({ onTaskCreated }) {
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-      const response = await fetch('/parse-task', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, timezone }),
+      const response = await fetch('/api/parse-task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ prompt, timezone }),
       });
 
       console.log('API Response Status:', response.status);

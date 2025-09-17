@@ -99,11 +99,22 @@ async def lifespan(app: FastAPI):
     print("Shutting down...")
 
 # --- FastAPI Application Initialization ---
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="AI Task Parser Service (Function Calling)",
     description="Parses tasks using Gemini's native Function Calling and saves them as workflows.",
-    version="2.1.0", # Version bump for modern architecture
+    version="2.1.0",
     lifespan=lifespan
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- Gemini Client Configuration for Function Calling ---
