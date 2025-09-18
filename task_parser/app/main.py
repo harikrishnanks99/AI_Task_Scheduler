@@ -1,5 +1,3 @@
-# task_parser/app/main.py
-
 import os
 import google.generativeai as genai
 from fastapi import FastAPI, HTTPException, Depends
@@ -7,25 +5,15 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
 from google.protobuf.struct_pb2 import Value
-import json
+from datetime import datetime
+import pytz
+from fastapi.middleware.cors import CORSMiddleware
 
 # --- Local Imports ---
 from . import crud, schemas, sql_models
 from .database import engine, get_db
 
-from builtins import print, str, int, hasattr, isinstance, dict, list, type
-from datetime import datetime
-from typing import Dict, List, Any, Type
-from fastapi import FastAPI, HTTPException, Depends
-from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
-from contextlib import asynccontextmanager
-from google.protobuf.struct_pb2 import Value
-
-from . import crud, schemas, sql_models
-from .database import engine, get_db
-
-# Timezone mapping for standardization
+# --- Timezone Sanitization Map ---
 TIMEZONE_ABBREVIATION_MAP = {
     "IST": "Asia/Kolkata", "PST": "America/Los_Angeles", "PDT": "America/Los_Angeles",
     "MST": "America/Denver", "MDT": "America/Denver", "CST": "America/Chicago",
@@ -33,57 +21,98 @@ TIMEZONE_ABBREVIATION_MAP = {
     "GMT": "Etc/GMT", "UTC": "UTC",
 }
 
-
-def format_schedule_from_llm(raw_schedule: dict) -> dict:
-    """
-    Takes the raw, flat dictionary from the LLM and converts it into the
-    structured {'type': '...', 'value': '...'} format our system expects.
-    """
-    # Infer DATETIME if year, month, or day are present
-    if 'year' in raw_schedule or 'month' in raw_schedule or 'day' in raw_schedule:
-        now = datetime.now()
-        # Use provided values, but default to current year/month/day if missing
-        dt_object = datetime(
-            year=raw_schedule.get('year', now.year),
-            month=raw_schedule.get('month', now.month),
-            day=raw_schedule.get('day', now.day),
-            hour=int(raw_schedule.get('hour', 0)),
-            minute=int(raw_schedule.get('minute', 0))
-        )
-        return {"type": "datetime", "value": dt_object.isoformat()}
-
-    # Infer INTERVAL if 'every' and 'period' are present
-    elif 'every' in raw_schedule and 'period' in raw_schedule:
-        return {
-            "type": "interval",
-            "every": int(raw_schedule['every']),
-            "period": raw_schedule['period']
-        }
-
-    # Infer CRON for everything else (e.g., just hour/minute)
-    else:
-        # Default to "every day" if not specified otherwise
-        cron_str = "{minute} {hour} * * *".format(
-            minute=int(raw_schedule.get('minute', 0)) if str(raw_schedule.get('minute')).isdigit() else '*',
-            hour=int(raw_schedule.get('hour', 0)) if str(raw_schedule.get('hour')).isdigit() else '*'
-        )
-        return {"type": "cron", "value": cron_str}
-
-
+# --- Robust Converter for Google's ProtoBuf Objects ---
 def to_dict(data):
     """
-    Recursively converts Google's MapComposite and RepeatedComposite
+    Recursively converts Google's special MapComposite and RepeatedComposite
     objects into standard Python dictionaries and lists.
     """
-    if hasattr(data, "items"):  # This checks if it's dict-like (e.g., MapComposite)
+    if hasattr(data, "items"):
         return {key: to_dict(value) for key, value in data.items()}
-    elif isinstance(data, Value): # Handles simple protobuf Value objects
+    elif isinstance(data, Value):
         return data.string_value or data.number_value or data.bool_value or None
-    elif hasattr(data, "__iter__") and not isinstance(data, str): # This checks if it's list-like
+    elif hasattr(data, "__iter__") and not isinstance(data, str):
         return [to_dict(item) for item in data]
     else:
         return data
 
+# --- Intelligent Schedule Formatter with Defensive Logic (THE FIX) ---
+def format_schedule_from_llm(raw_schedule: dict, timezone_str: str) -> dict:
+    """
+    Takes the raw, flat dictionary from the LLM and intelligently converts it
+    into the structured {'type': '...', 'value': '...'} format. This version
+    handles non-integer values from the LLM gracefully.
+    """
+    try:
+        user_tz = pytz.timezone(timezone_str)
+    except pytz.UnknownTimeZoneError:
+        user_tz = pytz.utc
+    
+    now_in_user_tz = datetime.now(user_tz)
+
+    # --- NEW, SAFER LOGIC ORDER ---
+
+    # Priority 1: INTERVAL ("every N period") - This is the most distinct.
+    if 'every' in raw_schedule and 'period' in raw_schedule:
+        print("Formatter: Classified as INTERVAL.")
+        return { "type": "interval", "every": int(raw_schedule['every']), "period": raw_schedule['period'] }
+
+    # Priority 2: A time for TODAY ("at 5pm", "at 11:44")
+    # We check this before the general datetime block to handle cases like 'day': 'today'.
+    elif 'hour' in raw_schedule and 'minute' in raw_schedule and not ('year' in raw_schedule or 'month' in raw_schedule):
+        hour_val = raw_schedule.get('hour', 0)
+        minute_val = raw_schedule.get('minute', 0)
+        if str(hour_val).isdigit() and str(minute_val).isdigit():
+            dt_object = now_in_user_tz.replace(
+                hour=int(hour_val), minute=int(minute_val),
+                second=0, microsecond=0
+            )
+            print(f"Formatter: Classified as 'today at time' DATETIME: {dt_object.isoformat()}")
+            return {"type": "datetime", "value": dt_object.strftime('%Y-%m-%dT%H:%M:%S')}
+
+    # Priority 3: Explicit DATETIME (year, month, or day is present)
+    elif 'year' in raw_schedule or 'month' in raw_schedule or 'day' in raw_schedule:
+        # Gracefully handle non-integer values by trying to convert them
+        try:
+            dt_object = datetime(
+                year=int(raw_schedule.get('year', now_in_user_tz.year)),
+                month=int(raw_schedule.get('month', now_in_user_tz.month)),
+                day=int(raw_schedule.get('day', now_in_user_tz.day)),
+                hour=int(raw_schedule.get('hour', 0)),
+                minute=int(raw_schedule.get('minute', 0))
+            )
+            print(f"Formatter: Classified as explicit DATETIME: {dt_object.isoformat()}")
+            return {"type": "datetime", "value": dt_object.strftime('%Y-%m-%dT%H:%M:%S')}
+        except (ValueError, TypeError):
+            # If conversion fails (e.g., day='today'), fall through to the safe 'now' default
+            print(f"Formatter: Failed to parse explicit date parts, falling back. Parts were: {raw_schedule}")
+            pass
+
+    # Priority 4: A recurring CRON schedule
+    elif 'day_of_week' in raw_schedule or 'day_of_month' in raw_schedule:
+        print("Formatter: Classified as CRON.")
+        day_of_week = raw_schedule.get('day_of_week', '*')
+        valid_dow = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', '*']
+        if not str(day_of_week).isdigit() and str(day_of_week).lower() not in valid_dow:
+            day_of_week = '*'
+        
+        cron_parts = {
+            'minute': raw_schedule.get('minute', '0'), 'hour': raw_schedule.get('hour', '*'),
+            'day_of_month': raw_schedule.get('day_of_month', '*'), 'month_of_year': raw_schedule.get('month', '*'),
+            'day_of_week': day_of_week
+        }
+        if not str(cron_parts['minute']).isdigit(): cron_parts['minute'] = '*'
+        if not str(cron_parts['hour']).isdigit(): cron_parts['hour'] = '*'
+        
+        cron_str = "{minute} {hour} {day_of_month} {month_of_year} {day_of_week}".format(**cron_parts)
+        print(f"  -> Generated CRON string: '{cron_str.strip()}'")
+        return {"type": "cron", "value": cron_str.strip()}
+
+    # --- SAFE FALLBACK ---
+    else:
+        print("Formatter: Ambiguous schedule. Defaulting to a one-time 'run now' DATETIME task.")
+        dt_object = now_in_user_tz
+        return {"type": "datetime", "value": dt_object.strftime('%Y-%m-%dT%H:%M:%S')}
 
 
 # --- Database Setup & Lifespan Event Handler ---
@@ -99,38 +128,30 @@ async def lifespan(app: FastAPI):
     print("Shutting down...")
 
 # --- FastAPI Application Initialization ---
-from fastapi.middleware.cors import CORSMiddleware
-
 app = FastAPI(
     title="AI Task Parser Service (Function Calling)",
     description="Parses tasks using Gemini's native Function Calling and saves them as workflows.",
-    version="2.1.0",
+    version="2.2.0",
     lifespan=lifespan
 )
 
-# Configure CORS
+# --- Configure CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Gemini Client Configuration for Function Calling ---
+# --- Gemini Client Configuration ---
 try:
     genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-
- 
     gemini_model = genai.GenerativeModel(
-        "gemini-2.0-flash",
-        system_instruction="You are a helpful assistant that helps users schedule tasks by using the provided `ScheduleTaskTool` tool. You can handle single or multi-step tasks (workflows).",
-        tools=[schemas.ScheduleTaskTool] # Pass the Pydantic class directly
+        "gemini-1.5-flash",
+        system_instruction="You are a helpful assistant that helps users schedule tasks...",
+        tools=[schemas.ScheduleTaskTool]
     )
-    # --- END ---
-
-except KeyError:
-    raise RuntimeError("GOOGLE_API_KEY environment variable not set.")
 except Exception as e:
     print(f"!!! FATAL ERROR during Gemini model initialization: {e} !!!")
     raise
@@ -153,22 +174,14 @@ async def parse_and_create_task(
         
         response_part = response.candidates[0].content.parts[0]
         if not response_part.function_call:
-            raise HTTPException(status_code=400, detail="Could not understand the request into a schedulable task. Please be more specific about the task and schedule.")
+            raise HTTPException(status_code=400, detail="Could not understand the request into a schedulable task.")
 
         function_call_args = response_part.function_call.args
-
         args_dict = to_dict(function_call_args)
-
-        # 1. Pop the raw schedule dict out of the main arguments
+        
         raw_schedule = args_dict.pop('schedule', {})
-        
-        # 2. Format it into the structured format our system needs
-        formatted_schedule = format_schedule_from_llm(raw_schedule)
-        
-        # 3. Add the formatted schedule back into the main data object
+        formatted_schedule = format_schedule_from_llm(raw_schedule, sanitized_timezone)
         args_dict['schedule'] = formatted_schedule
-
-        # args_dict = json.loads(json.dumps(function_call_args))
         
         validated_task_data = schemas.ScheduleTaskTool(**args_dict)
         
