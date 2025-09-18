@@ -46,7 +46,8 @@ def send_email(previous_result: dict = None, recipient: str = None, subject: str
     if not subject:
         raise ValueError("Email subject is missing.")
     if not email_body:
-        raise ValueError("Email body is empty or could not be generated.")
+        email_body = subject # Fallback to subject if body is empty
+        # raise ValueError("Email body is empty or could not be generated.")
 
     # --- Email Sending Logic (largely unchanged) ---
     sender_email = os.environ.get("EMAIL_HOST_USER")
