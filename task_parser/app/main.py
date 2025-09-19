@@ -200,3 +200,32 @@ async def parse_and_create_task(
 async def read_tasks(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
     tasks = await crud.get_tasks(db, skip=skip, limit=limit)
     return tasks
+
+
+
+@app.delete("/tasks/{task_id}", status_code=204)
+async def delete_task(task_id: int, db: AsyncSession = Depends(get_db)):
+    # We will create this new CRUD function next
+    task = await crud.get_task(db, task_id=task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await crud.delete_task(db, task=task)
+    # A 204 response means "Success, but no content to return"
+    return
+
+
+
+
+# --- NEW: Endpoint to update a task's status (e.g., pause/resume) ---
+@app.patch("/tasks/{task_id}", response_model=schemas.Task)
+async def update_task_status(
+    task_id: int,
+    # We will create this new Pydantic model next
+    update_data: schemas.TaskUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    task = await crud.get_task(db, task_id=task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    # We will create this new CRUD function next
+    return await crud.update_task(db, task=task, update_data=update_data)

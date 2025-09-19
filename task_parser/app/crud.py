@@ -1,6 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from . import sql_models, schemas
+# from .schemas import TaskUpdate
+from .schemas import TaskUpdate
 
 async def create_task(db: AsyncSession, task_data: schemas.ScheduleTaskTool) -> sql_models.Task:
     """
@@ -34,3 +36,32 @@ async def get_tasks(db: AsyncSession, skip: int = 0, limit: int = 100) -> list[s
         select(sql_models.Task).offset(skip).limit(limit)
     )
     return result.scalars().all()
+
+
+
+
+
+# --- NEW CRUD FUNCTIONS ---
+
+async def get_task(db: AsyncSession, task_id: int) -> sql_models.Task | None:
+    """Retrieves a single task by its ID."""
+    return await db.get(sql_models.Task, task_id)
+
+async def delete_task(db: AsyncSession, task: sql_models.Task):
+    """Deletes a task from the database."""
+    await db.delete(task)
+    await db.commit()
+    return
+
+async def update_task(
+    db: AsyncSession, task: sql_models.Task, update_data: TaskUpdate
+) -> sql_models.Task:
+    """Updates a task's attributes."""
+    # .model_dump(exclude_unset=True) is important: it only includes fields
+    # that were actually provided in the request body.
+    update_data_dict = update_data.model_dump(exclude_unset=True)
+    for key, value in update_data_dict.items():
+        setattr(task, key, value)
+    await db.commit()
+    await db.refresh(task)
+    return task

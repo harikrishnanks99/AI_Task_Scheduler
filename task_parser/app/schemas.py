@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Literal, Dict, List, Any, Union
 from datetime import datetime
-
+from typing import Optional 
 # --- Input Model (from user) ---
 class TaskRequest(BaseModel):
     prompt: str
@@ -79,3 +79,10 @@ class Task(BaseModel):
     is_active: bool
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+
+
+# --- NEW: Pydantic model for updating a task ---
+class TaskUpdate(BaseModel):
+    is_active: Optional[bool] = None
