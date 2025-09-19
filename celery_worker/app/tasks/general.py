@@ -84,7 +84,7 @@ def send_email(previous_result: dict = None, recipient: str = None, subject: str
 
 
 @celery_app.task(name="scrape_web", bind=True)
-def scrape_web(self, url: str, selector: str):
+def scrape_web(self, url: str, selector: str = 'body'):
     """
     Scrapes a webpage for elements matching a CSS selector.
 

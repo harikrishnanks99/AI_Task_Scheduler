@@ -23,7 +23,7 @@ class SendEmailParams(BaseModel):
 
 class ScrapeWebParams(BaseModel):
     url: str = Field(description="The fully qualified URL to scrape (e.g., 'https://news.ycombinator.com').")
-    selector: str = Field(description="A CSS selector to extract specific elements from the page (e.g., '.titleline > a').")
+    selector: str = Field(description="A mandatory CSS selector to extract specific elements. For example, to get all headlines, use 'h2'. For links in a title, use '.titleline > a'. The user must provide this or you must infer a sensible default.")
 
 class CallApiParams(BaseModel):
     endpoint: str = Field(description="The API endpoint URL to call.")
