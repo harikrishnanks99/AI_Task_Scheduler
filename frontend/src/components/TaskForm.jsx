@@ -1,42 +1,37 @@
 import { useState } from 'react';
+import toast from 'react-hot-toast';
 
 function TaskForm({ onTaskCreated }) {
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+  // We no longer need the `error` state, so it's gone.
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!prompt.trim()) return;
 
     setIsLoading(true);
-    setError(null);
+    const toastId = toast.loading('Scheduling new task...');
 
     try {
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const response = await fetch('/api/parse-task', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ prompt, timezone }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, timezone }),
       });
 
-      console.log('API Response Status:', response.status);
-
       if (!response.ok) {
-        let errorMessage = 'Failed to create task';
-        try {
-          const errData = await response.json();
-          errorMessage = errData.detail || errorMessage;
-        } catch (_) { }
-        throw new Error(errorMessage);
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Failed to create task');
       }
 
+      toast.success('Task scheduled successfully!', { id: toastId });
       setPrompt('');
       onTaskCreated();
 
     } catch (err) {
-      setError(err.message);
+      toast.error(`Error: ${err.message}`, { id: toastId });
     } finally {
       setIsLoading(false);
     }
@@ -49,7 +44,7 @@ function TaskForm({ onTaskCreated }) {
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g., Scrape the headlines from news.ycombinator.com and email them to me every hour"
+          placeholder="e.g., Scrape headlines from news.ycombinator.com and email them to me every hour"
           rows={4}
           disabled={isLoading}
         />
@@ -57,7 +52,6 @@ function TaskForm({ onTaskCreated }) {
           {isLoading ? 'Scheduling...' : 'Schedule Task'}
         </button>
       </form>
-      {error && <p className="error-message">{error}</p>}
     </div>
   );
 }

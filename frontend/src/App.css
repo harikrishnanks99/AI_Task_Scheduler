@@ -123,3 +123,84 @@ tbody tr:last-child td {
 .status-inactive {
   background-color: var(--inactive-color);
 }
+
+
+
+
+
+/* Table Actions */
+.task-table .actions-cell {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.icon-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.icon-button:hover {
+  background-color: #e9ecef;
+}
+
+.icon-button.danger:hover {
+  background-color: #f8d7da;
+  color: var(--error-color);
+}
+
+/* Modal Styling */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+.modal-close-button {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  background: none;
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+  color: #888;
+}
+
+.modal-section {
+  margin-bottom: 1.5rem;
+}
+
+pre {
+  background-color: #f4f7f9;
+  padding: 1rem;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
